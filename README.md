@@ -15,17 +15,8 @@ sudo mv kubesec /usr/local/bin/kubesec
 
 This will download the latest version of Kubesec, extract the binary, make it executable, and move it to your system’s path.
 
-#### Step 2: Start the Kubesec HTTP Server
 
-To scan YAML files using Kubesec's HTTP API, start the Kubesec HTTP server:
-
-```bash
-./kubesec http 8080 &
-```
-
-This starts the server in the background, making it accessible on port `8080`.
-
-#### Step 3: Create the Pod YAML File
+#### Step 2: Create the Pod YAML File
 
 We will now define a Kubernetes Pod that we want to scan. Below is a YAML configuration file (as shown in the image). Save this configuration as `my-pod.yaml`.
 
@@ -45,7 +36,7 @@ spec:
 
 In this configuration, the Pod contains one container running the `nginx` image. It uses the `privileged` mode, which we will address later.
 
-#### Step 4: Scan the YAML File Using Kubesec
+#### Step 3: Scan the YAML File Using Kubesec
 
 Once you have the YAML file ready, use Kubesec to scan the file for security vulnerabilities:
 
@@ -55,22 +46,41 @@ kubesec scan my-pod.yaml
 
 Kubesec will return a detailed security report with a **score** for the Pod's security settings. Here’s what the output might look like:
 
+### Results from First Scan (`my-pod.yaml`)
+
+Here are the results from the first scan:
+
+```json
+{
+  "object": "Pod/kubesec-demo.default",
+  "valid": true,
+  "fileName": "my-pod.yaml",
+  "message": "Failed with a score of -29 points",
+  "score": -29,
+  "scoring": {
+    "critical": [
+      {
+        "id": "Privileged",
+        "selector": "containers[] .securityContext .privileged == true",
+        "reason": "Privileged containers can allow almost completely unrestricted host access",
+        "points": -30
+      }
+    ],
+    ...
+  }
+}
 ```
-File: my-pod.yaml
-Score: -3
 
-Advise:
-- Privilege escalation should be avoided unless absolutely necessary.
-- Containers should not run as privileged.
-- 'readOnlyRootFilesystem' should be true for extra security.
-```
+### Interpretation of the Results
 
-##### Understanding the Score:
-- The **score** reflects how secure the Pod configuration is. A **positive score** indicates that the security posture is acceptable, while a **negative score** (as seen here) shows critical vulnerabilities.
-- The **privileged: true** setting is the main issue here, as it allows the container to access the host system with elevated privileges, which poses a serious security risk.
-- The setting `readOnlyRootFilesystem: true` is good practice and contributes positively to the security score by ensuring that the container’s filesystem cannot be written to.
+- **Score**: The score is **-29** points, indicating serious vulnerabilities.
+- **Critical Issues**: 
+  - **Privileged**: The Pod is running with a privileged context, which poses significant security risks. This can lead to unrestricted access to the host system.
 
-#### Step 5: Fix the Security Issue (Remove Privilege Escalation)
+- **Passed Checks**:
+  - **ReadOnlyRootFilesystem**: The root filesystem is set to read-only, which is a good practice to prevent unauthorized modifications.
+
+#### Step 4: Fix the Security Issue (Remove Privilege Escalation)
 
 To improve the security, we will remove the `privileged: true` setting from the `securityContext`. Modify your `my-pod.yaml` to look like this:
 
@@ -93,19 +103,46 @@ Now, re-run the Kubesec scan:
 kubesec scan my-pod.yaml
 ```
 
-You should see an improved score, with the issue of privilege escalation removed:
+### Results from Second Scan (`my-pod2.yaml`)
 
+Here are the results from the second scan:
+
+```json
+{
+  "object": "Pod/kubesec-demo.default",
+  "valid": true,
+  "fileName": "my-pod2.yaml",
+  "message": "Passed with a score of 1 points",
+  "score": 1,
+  "scoring": {
+    "passed": [
+      {
+        "id": "ReadOnlyRootFilesystem",
+        "selector": "containers[] .securityContext .readOnlyRootFilesystem == true",
+        "reason": "An immutable root filesystem can prevent malicious binaries being added to PATH and increase attack cost",
+        "points": 1
+      }
+    ],
+    ...
+  }
+}
 ```
-File: my-pod.yaml
-Score: 5
 
-Advise:
-- 'readOnlyRootFilesystem' is set to true, providing extra security.
-```
+### Interpretation of the Second Scan Results
 
-##### Analyzing the Results:
-- **Improved score**: By removing the `privileged` flag, we have greatly improved the security of the Pod. 
-- **Remaining suggestions**: Kubesec will still offer advice on other improvements, such as ensuring the container is running with the least privilege possible or tightening file permissions further.
+- **Score**: The score is **1** point, indicating a pass on the read-only filesystem check.
+- **Passed Checks**: 
+  - The only check passed is for the **ReadOnlyRootFilesystem**.
+
+### Advise for Further Enhancements
+
+While the Pod now has a score of 1, you should consider implementing additional security measures, such as:
+
+- **AppArmor**: Define AppArmor policies for your containers to add another layer of security.
+- **Service Accounts**: Use service accounts with the least privilege necessary to restrict Kubernetes API access.
+- **Seccomp**: Implement Seccomp profiles to enforce security boundaries for system calls.
+- **Resource Limits**: Specify resource limits and requests to prevent Denial of Service (DoS) attacks.
+
 
 #### Step 6: Additional Use Cases for Kubesec
 
@@ -119,3 +156,8 @@ Kubesec's security scanning can be integrated into your CI/CD pipelines to autom
 ### Conclusion
 
 In this guide, we used Kubesec to scan a Kubernetes Pod for security risks, interpreted its findings, and applied security improvements to achieve a more secure setup. By integrating Kubesec scans into your Kubernetes workflow, you can ensure that your deployments adhere to best security practices from the start.
+
+
+
+
+
